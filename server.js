@@ -2,45 +2,107 @@ const express = require("express");
 const app = express();
 const PORTA = 3000;
 
-const tarefas = [
+let tarefas = [
   { id: 1, texto: "Estudar Node", prioridade: "alta", coluna: "afazer" },
   { id: 2, texto: "Criar API", prioridade: "alta", coluna: "andamento" },
   { id: 3, texto: "Testar Postman", prioridade: "media", coluna: "concluido" },
 ];
 
-let proximoId = 4; // começa em 4 pois já temos 3 tarefas
+const express = require('express');
+
+// Middleware para processar requisições em formato JSON
 app.use(express.json());
-app.post('/tarefas', (req, res) => {
 
-// req.body contém os dados enviados no body da requisição
+// Estado inicial do banco de dados (memória)
+let usuarios = [{ id: 1, nome: 'admin', email: 'admin@taskflow.com', senha: '1234' }];
+let proximoIdUsuario = 2;
 
-const { texto, prioridade, coluna, cidade } = req.body;
-
-// Criar a nova tarefa com ID gerado pelo servidor
-
-const novaTarefa = {
-
-id: proximoId++, // usa o ID atual e incrementa
-
-texto: texto,
-
-prioridade:prioridade || 'media', // valor padrão se não enviado
-
-coluna: coluna || 'afazer',
-
-cidade: cidade || '',
-
-};
-
-// Adicionar ao array em memória
-
-tarefas.push(novaTarefa);
-
-// Retornar a tarefa criada com status 201 Created
-
-res.status(201).json(novaTarefa);
-
+// ROTA 1 — Listar todos os usuários
+app.get('/usuarios', (req, res) => {
+  return res.status(200).json(usuarios);
 });
+
+// ROTA 2 — Buscar usuário por ID
+app.get('/usuarios/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const usuario = usuarios.find((u) => u.id === id);
+
+  if (!usuario) {
+    return res.status(404).json({ erro: 'Usuário não encontrado' });
+  }
+
+  return res.status(200).json(usuario);
+});
+
+// ROTA 3 — Criar usuário (com validação do DESAFIO)
+app.post('/usuarios', (req, res) => {
+  const { nome, email, senha } = req.body;
+
+  // DESAFIO: Verificar se o email já está cadastrado
+  const emailExiste = usuarios.some((u) => u.email === email);
+  if (emailExiste) {
+    return res.status(400).json({ erro: 'Email já cadastrado' });
+  }
+
+  const novoUsuario = {
+    id: proximoIdUsuario++,
+    nome,
+    email,
+    senha
+  };
+
+  usuarios.push(novoUsuario);
+  return res.status(201).json(novoUsuario);
+});
+
+// ROTA 4 — Atualizar usuário por ID
+app.put('/usuarios/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const { nome, email, senha } = req.body;
+
+  const index = usuarios.findIndex((u) => u.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ erro: 'Usuário não encontrado' });
+  }
+
+  // Opcional: Impedir atualização para um email que já pertence a outro usuário
+  const emailEmUso = usuarios.some((u) => u.email === email && u.id !== id);
+  if (emailEmUso) {
+    return res.status(400).json({ erro: 'Email já cadastrado' });
+  }
+
+  usuarios[index] = {
+    ...usuarios[index],
+    nome: nome ?? usuarios[index].nome,
+    email: email ?? usuarios[index].email,
+    senha: senha ?? usuarios[index].senha
+  };
+
+  return res.status(200).json(usuarios[index]);
+});
+
+// ROTA 5 — Deletar usuário por ID
+app.delete('/usuarios/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const index = usuarios.findIndex((u) => u.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ erro: 'Usuário não encontrado' });
+  }
+
+  usuarios.splice(index, 1);
+
+  return res.status(200).json({ mensagem: 'Usuário removido', id });
+});
+
+// Inicialização do servidor na porta 3000
+app.listen(3000, () => {
+  console.log('Servidor rodando em http://localhost:3000');
+});
+
+
+
 
 app.get("/", (req, res) => {
   res.json({ status: "ok" });
