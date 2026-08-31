@@ -148,7 +148,7 @@ app.use((req, res) => {
 });
 
 app.listen(PORTA, () => console.log(`Porta ${PORTA}`));
-//--------------------------------------------------------------------------------
+//----------------------------------------------------------------------
 
 // app.get("/tarefas/:id", (req, res) => {
 //   // req.params.id chega como STRING — converter para número
