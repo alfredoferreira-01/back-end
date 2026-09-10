@@ -1,24 +1,15 @@
 const usuarioModel = require("../models/usuario.model");
+const tarefaModel = require("../models/tarefa.model");
 
 const usuariosController = {
- 
   listar(req, res) {
-    const { nome, email } = req.query;
-    let resultado = usuarioModel.listar();
-
-    if (nome) {
-      resultado = resultado.filter((u) => u.nome === nome);
-    }
-    if (email) {
-      resultado = resultado.filter((u) => u.email === email);
-    }
-
+    // Repassa os filtros de req.query diretamente para o Model
+    const resultado = usuarioModel.listar(req.query);
     res.json(resultado);
   },
 
-
   buscarPorId(req, res) {
-    const usuario = usuarioModel.buscar(parseInt (req.params.id));
+    const usuario = usuarioModel.buscar(parseInt(req.params.id));
 
     if (!usuario) {
       return res.status(404).json({ erro: "Usuario não encontrado" });
@@ -53,11 +44,22 @@ const usuariosController = {
 
   remover(req, res) {
     const id = parseInt(req.params.id);
-    const removido = usuarioModel.remover(id);
 
-    if (!removido) {
+    const usuario = usuarioModel.buscar(id);
+    if (!usuario) {
       return res.status(404).json({ erro: "Usuario não encontrado" });
     }
+
+    // O Model calcula se existem tarefas do usuário
+    const qtdTarefas = tarefaModel.contarPorUsuario(id);
+
+    if (qtdTarefas > 0) {
+      return res.status(400).json({
+        erro: "Usuário possui tarefas. Remova as tarefas antes.",
+      });
+    }
+
+    usuarioModel.remover(id);
 
     res.json({ mensagem: "usuario removido com sucesso", id });
   },
