@@ -1,3 +1,5 @@
+const usuarioModel = require("./usuario.model"); // <-- Adicionada a importação necessária
+
 let tarefas = [
   {
     id: 1,
@@ -74,15 +76,18 @@ module.exports = {
     ).length,
 
   adicionar: ({ texto, prioridade, coluna, cidade, usuarioId }) => {
+    const colunaFinal = coluna || "afazer"; // <-- Definição correta da coluna
+
     const nova = {
       id: proximoId++,
       texto,
       prioridade: prioridade || "media",
-      coluna: coluna || "afazer",
+      coluna: colunaFinal,
       cidade: cidade || "",
-      usuarioId,
-      concluidaEm: novaColuna === "concluido" ? new Date().toISOString() : null,
+      usuarioId: usuarioId ? parseInt(usuarioId) : null,
+      concluidaEm: colunaFinal === "concluido" ? new Date().toISOString() : null, // <-- Usando colunaFinal em vez de novaColuna
     };
+    
     tarefas.push(nova);
     return nova;
   },

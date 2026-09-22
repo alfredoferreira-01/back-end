@@ -2,7 +2,7 @@ function corsMiddleware(req, res, next) {
 
     res.setHeader(
         "Access-Control-Allow-Origin", 
-        "https://www.google.com"
+        
     );
 
     res.setHeader(

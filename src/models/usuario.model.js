@@ -30,7 +30,7 @@ module.exports = {
       id: proximoId++,
       nome: nome || "fefe",
       email: email || "admin@taskflow.com",
-      senha: senha || "1223",
+      senha: senha || "1234",
     };
     usuarios.push(novo);
     return novo;
