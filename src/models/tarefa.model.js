@@ -1,150 +1,179 @@
-const usuarioModel = require("./usuario.model"); // <-- Adicionada a importação necessária
+const prisma = require('../database/prisma');
 
-let tarefas = [
-  {
-    id: 1,
-    texto: "Estudar Node",
-    prioridade: "alta",
-    coluna: "andamento",
-    cidade: "",
-    usuarioId: 1,
-    concluidaEm: null,
-  },
-  {
-    id: 2,
-    texto: "Criar API",
-    prioridade: "alta",
-    coluna: "andamento",
-    cidade: "",
-    usuarioId: 1,
-    concluidaEm: null,
-  },
-  {
-    id: 3,
-    texto: "Testar Postman",
-    prioridade: "media",
-    coluna: "concluido",
-    cidade: "",
-    usuarioId: 1,
-    concluidaEm: "2026-03-01T10:00:00.000Z",
-  },
-];
+// os três JOINs: só o nome/descrição de cada um
+const incluirNomes = {
+  projetos: { select: { nome: true } },
+  usuarios: { select: { nome: true } },
+  prioridades: { select: { descricao: true } },
+};
 
-let proximoId = 4;
+// formata a tarefa para manter o contrato da API
+function formatarTarefa(tarefa) {
+  if (!tarefa) return null;
+
+  const { projetos, usuarios, prioridades, ...resto } = tarefa;
+  return {
+    ...resto,
+    projeto: projetos?.nome,
+    usuario: usuarios?.nome,
+    prioridade: prioridades?.descricao,
+  };
+}
 
 module.exports = {
-  listar: ({ coluna, prioridade, usuarioId } = {}) => {
-    if (usuarioId !== undefined) {
-      const usuarioExiste = usuarioModel.buscar(parseInt(usuarioId));
+  listar: async (query = {}) => {
+    // Monta os filtros dinamicamente para o Prisma
+    const where = {};
 
-      if (!usuarioExiste) {
-        return [];
-      }
+    if (query.coluna) {
+      where.coluna = query.coluna;
+    }
+    if (query.id_prioridade) {
+      where.id_prioridade = Number(query.id_prioridade);
+    }
+    if (query.usuario_id) {
+      where.usuario_id = Number(query.usuario_id);
     }
 
-    let resultado = tarefas;
+    // Busca no Prisma com filtros, includes e ordenação
+    const lista = await prisma.tarefas.findMany({
+      where,
+      include: incluirNomes,
+      orderBy: { id: 'asc' },
+    });
 
-    if (usuarioId !== undefined) {
-      resultado = resultado.filter((t) => t.usuarioId === parseInt(usuarioId));
-    }
-
-    if (coluna) {
-      resultado = resultado.filter((t) => (t.coluna || "afazer") === coluna);
-    }
-
-    if (prioridade) {
-      resultado = resultado.filter((t) => t.prioridade === prioridade);
-    }
-
-    return resultado;
+    // Mapeia o resultado aplicando a formatação
+    return lista.map(formatarTarefa);
   },
 
-  listarPorColuna: (coluna) =>
-    tarefas.filter((t) => (t.coluna || "afazer") === coluna),
+  buscar: async (id) => {
+    const tarefa = await prisma.tarefas.findUnique({
+      where: { id: Number(id) },
+      include: incluirNomes,
+    });
 
-  listarPorPrioridade: (prioridade) =>
-    tarefas.filter((t) => t.prioridade === prioridade),
-
-  buscar: (id) => tarefas.find((t) => t.id === id),
-
-  contarPorUsuario: (usuarioId) =>
-    tarefas.filter((t) => t.usuarioId === usuarioId).length,
-
-  contarPorUsuarioEColuna: (usuarioId, coluna) =>
-    tarefas.filter(
-      (t) => t.usuarioId === usuarioId && (t.coluna || "afazer") === coluna,
-    ).length,
-
-  adicionar: ({ texto, prioridade, coluna, cidade, usuarioId }) => {
-    const colunaFinal = coluna || "afazer"; // <-- Definição correta da coluna
-
-    const nova = {
-      id: proximoId++,
-      texto,
-      prioridade: prioridade || "media",
-      coluna: colunaFinal,
-      cidade: cidade || "",
-      usuarioId: usuarioId ? parseInt(usuarioId) : null,
-      concluidaEm: colunaFinal === "concluido" ? new Date().toISOString() : null, // <-- Usando colunaFinal em vez de novaColuna
-    };
-    
-    tarefas.push(nova);
-    return nova;
+    return formatarTarefa(tarefa);
   },
 
-  atualizar: (id, dados) => {
-    const idx = tarefas.findIndex((t) => t.id === id);
-    if (idx === -1) return null;
+  contarPorUsuarioEColuna: async (usuarioId, coluna) => {
+    const total = await prisma.tarefas.count({
+      where: {
+        usuario_id: Number(usuarioId),
+        coluna: coluna,
+      },
+    });
 
-    let concluidaEm = tarefas[idx].concluidaEm || null;
+    return total;
+  },
 
-    if (dados.coluna !== undefined) {
-      if (dados.coluna === "concluido") {
-        concluidaEm = new Date().toISOString();
-      } else {
-        concluidaEm = null;
-      }
+  adicionar: async (dados) => {
+    const colunaFinal = dados.coluna || "afazer";
+    const agora = new Date();
+
+    const iniciadaEm = colunaFinal === "andamento" ? agora : null;
+    const concluidaEm = colunaFinal === "concluido" ? agora : null;
+
+    const novaTarefa = await prisma.tarefas.create({
+      data: {
+        texto: dados.texto,
+        id_prioridade: Number(dados.id_prioridade ?? dados.idPrioridade) || 2,
+        coluna: colunaFinal,
+        usuario_id: Number(dados.usuario_id ?? dados.usuarioId),
+        projeto_id: Number(dados.projeto_id ?? dados.projetoId),
+        criado_em: agora,
+        iniciada_em: iniciadaEm,
+        concluida_em: concluidaEm,
+      },
+      include: incluirNomes,
+    });
+
+    return formatarTarefa(novaTarefa);
+  },
+
+  atualizar: async (id, dados) => {
+    const idNum = Number(id);
+
+    // 1. Busca a tarefa atual para verificar existência e transições de estado
+    const tarefaAtual = await prisma.tarefas.findUnique({
+      where: { id: idNum },
+    });
+
+    if (!tarefaAtual) return null;
+
+    // 2. Regras de atualização de datas de status
+    const concluidaEm = dados.coluna === 'concluido' ? new Date() : null;
+    let iniciadaEm = tarefaAtual.iniciada_em;
+
+    if (tarefaAtual.coluna === 'andamento' && dados.coluna === 'afazer') {
+      iniciadaEm = null;
+    } else if (tarefaAtual.coluna === 'afazer' && dados.coluna === 'andamento') {
+      iniciadaEm = new Date();
     }
 
-    tarefas[idx] = {
-      ...tarefas[idx],
-      ...dados,
-      id,
-      concluidaEm,
-    };
+    // 3. Atualização no banco via Prisma
+    const tarefaAtualizada = await prisma.tarefas.update({
+      where: { id: idNum },
+      data: {
+        texto: dados.texto,
+        coluna: dados.coluna,
+        usuario_id: Number(dados.usuario_id ?? dados.usuarioId),
+        projeto_id: Number(dados.projeto_id ?? dados.projetoId),
+        id_prioridade: Number(dados.id_prioridade ?? dados.idPrioridade) || 2,
+        concluida_em: concluidaEm,
+        iniciada_em: iniciadaEm,
+      },
+      include: incluirNomes,
+    });
 
-    return tarefas[idx];
+    return formatarTarefa(tarefaAtualizada);
   },
 
-  remover: (id) => {
-    const idx = tarefas.findIndex((t) => t.id === id);
-    if (idx === -1) return null;
+  remover: async (id) => {
+    try {
+      const resultado = await prisma.tarefas.delete({
+        where: { id: Number(id) },
+        include: incluirNomes, // Garante que trará os relacionamentos para formatar
+      });
 
-    return tarefas.splice(idx, 1)[0];
+      return formatarTarefa(resultado);
+    } catch (error) {
+      if (error.code === 'P2025') return null;
+      throw error;
+    }
   },
 
-  obterEstatisticas: (coluna) => {
-    const base = coluna
-      ? tarefas.filter((t) => (t.coluna || "afazer") === coluna)
-      : tarefas;
+  obterEstatisticas: async (colunaFiltro) => {
+    const where = {};
+    if (colunaFiltro) {
+      where.coluna = colunaFiltro;
+    }
 
-    const total = base.length;
+    // Otimização: traz apenas as colunas necessárias para os cálculos
+    const rows = await prisma.tarefas.findMany({
+      where,
+      select: {
+        coluna: true,
+        id_prioridade: true,
+      },
+    });
+
+    const total = rows.length;
 
     const porColuna = {
-      afazer: base.filter((t) => (t.coluna || "afazer") === "afazer").length,
-      andamento: base.filter((t) => t.coluna === "andamento").length,
-      concluido: base.filter((t) => t.coluna === "concluido").length,
+      afazer: rows.filter((t) => (t.coluna || "afazer") === "afazer").length,
+      andamento: rows.filter((t) => t.coluna === "andamento").length,
+      concluido: rows.filter((t) => t.coluna === "concluido").length,
     };
 
     const porPrioridade = {
-      alta: base.filter((t) => t.prioridade === "alta").length,
-      media: base.filter((t) => t.prioridade === "media").length,
-      baixa: base.filter((t) => t.prioridade === "baixa").length,
+      alta: rows.filter((t) => t.id_prioridade === 6).length,
+      media: rows.filter((t) => t.id_prioridade === 5).length,
+      baixa: rows.filter((t) => t.id_prioridade === 3).length,
     };
 
     const colunaMaisTarefas = Object.entries(porColuna).sort(
-      (a, b) => b[1] - a[1],
-    )[0][0];
+      (a, b) => b[1] - a[1]
+    )[0]?.[0] || "afazer";
 
     return {
       total,

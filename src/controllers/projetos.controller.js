@@ -1,52 +1,86 @@
 const projetoModel = require("../models/projeto.model");
+const criarErro = require("../utils/criarErro");
 
 const projetosController = {
-  listar(req, res) {
-    const { descricao } = req.query;
-    let resposta = projetoModel.listar();
+  async listar(req, res) {
+    const { usuario_id, usuarioId } = req.query;
+    const idParaFiltrar = usuario_id || usuarioId;
 
-    if (descricao) {
-      resposta = resposta.filter((p) => p.descricao === descricao);
+    // Validação do filtro de usuário se for enviado na query string
+    if (idParaFiltrar !== undefined) {
+      const idParsed = parseInt(idParaFiltrar, 10);
+      if (isNaN(idParsed)) {
+        throw criarErro(400, "O parâmetro de filtro 'usuario_id' deve ser um número válido");
+      }
     }
 
-    res.json(resposta);
+    const resposta = await projetoModel.listar(req.query);
+    return res.json(resposta);
   },
 
-  buscarPorId(req, res) {
-    const projeto = projetoModel.buscar(parseInt(req.params.id));
+  async buscarPorId(req, res) {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      throw criarErro(400, "ID de projeto inválido");
+    }
+
+    const projeto = await projetoModel.buscar(id);
 
     if (!projeto) {
-      return res.status(404).json({ erro: "Projeto não encontrado" });
+      throw criarErro(404, "Projeto não encontrado");
     }
 
-    res.json(projeto);
+    return res.json(projeto);
   },
 
-  criar(req, res) {
-    const novoProjeto = projetoModel.adicionar(req.body);
-    res.status(201).json(novoProjeto);
-  },
+  async criar(req, res) {
+    const { nome, descricao, usuario_id, usuarioId } = req.body;
+    const idUsuario = req.usuario?.id ?? usuario_id ?? usuarioId;
 
-  atualizar(req, res) {
-    const id = parseInt(req.params.id);
-    const projetoAtualizado = projetoModel.atualizar(id, req.body);
-
-    if (!projetoAtualizado) {
-      return res.status(404).json({ erro: "Projeto não encontrado" });
+    if (!nome) {
+      throw criarErro(400, "O nome do projeto é obrigatório");
     }
 
-    res.json(projetoAtualizado);
+    const novoProjeto = await projetoModel.adicionar({
+      nome,
+      descricao,
+      usuario_id: idUsuario,
+    });
+
+    return res.status(201).json(novoProjeto);
   },
 
-  remover(req, res) {
-    const id = parseInt(req.params.id);
-    const removido = projetoModel.remover(id);
+  async atualizar(req, res) {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      throw criarErro(400, "ID de projeto inválido");
+    }
+
+    const projetoAtual = await projetoModel.buscar(id);
+    if (!projetoAtual) {
+      throw criarErro(404, "Projeto não encontrado");
+    }
+
+    const projetoAtualizado = await projetoModel.atualizar(id, req.body);
+    return res.json(projetoAtualizado);
+  },
+
+  async remover(req, res) {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      throw criarErro(400, "ID de projeto inválido");
+    }
+
+    const removido = await projetoModel.remover(id);
 
     if (!removido) {
-      return res.status(404).json({ erro: "Projeto não encontrado" });
+      throw criarErro(404, "Projeto não encontrado");
     }
 
-    res.json({ mensagem: "Projeto removido com sucesso", id });
+    return res.json({ mensagem: "Projeto removido com sucesso", id });
   },
 };
 

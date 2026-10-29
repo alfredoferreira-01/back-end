@@ -1,67 +1,100 @@
 const usuarioModel = require("../models/usuario.model");
 const tarefaModel = require("../models/tarefa.model");
+const criarErro = require("../utils/criarErro");
 
 const usuariosController = {
-  listar(req, res) {
-    // Repassa os filtros de req.query diretamente para o Model
-    const resultado = usuarioModel.listar(req.query);
-    res.json(resultado);
+  async listar(req, res) {
+    const resultado = await usuarioModel.listar(req.query);
+    return res.json(resultado);
   },
 
-  buscarPorId(req, res) {
-    const usuario = usuarioModel.buscar(parseInt(req.params.id));
+  async buscarPorId(req, res) {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      throw criarErro(400, "ID de usuário inválido");
+    }
+
+    const usuario = await usuarioModel.buscar(id);
 
     if (!usuario) {
-      return res.status(404).json({ erro: "Usuario não encontrado" });
+      throw criarErro(404, "Usuário não encontrado");
     }
 
-    res.json(usuario);
+    return res.json(usuario);
   },
 
-  criar(req, res) {
-    const { email } = req.body;
+  async criar(req, res) {
+    const { nome, email, senha, senha_hash } = req.body;
 
-    if (email && usuarioModel.buscarPorEmail(email)) {
-      return res.status(400).json({
-        erro: "Este email já está cadastrado",
-      });
+    if (!email) {
+      throw criarErro(400, "O e-mail é obrigatório");
     }
 
-    const novoUsuario = usuarioModel.adicionar(req.body);
-    res.status(201).json(novoUsuario);
-  },
-
-  atualizar(req, res) {
-    const id = parseInt(req.params.id);
-    const usuarioAtualizado = usuarioModel.atualizar(id, req.body);
-
-    if (!usuarioAtualizado) {
-      return res.status(404).json({ erro: "Usuario não encontrado" });
+    if (!nome) {
+      throw criarErro(400, "O nome é obrigatório");
     }
 
-    res.json(usuarioAtualizado);
+    const usuarioExistente = await usuarioModel.buscarPorEmail(email);
+    if (usuarioExistente) {
+      throw criarErro(400, "Este email já está cadastrado");
+    }
+
+    const novoUsuario = await usuarioModel.adicionar({
+      nome,
+      email,
+      senha,
+      senha_hash,
+    });
+
+    return res.status(201).json(novoUsuario);
   },
 
-  remover(req, res) {
-    const id = parseInt(req.params.id);
+  async atualizar(req, res) {
+    const id = parseInt(req.params.id, 10);
 
-    const usuario = usuarioModel.buscar(id);
+    if (isNaN(id)) {
+      throw criarErro(400, "ID de usuário inválido");
+    }
+
+    const usuarioAtual = await usuarioModel.buscar(id);
+    if (!usuarioAtual) {
+      throw criarErro(404, "Usuário não encontrado");
+    }
+
+    if (req.body.email && req.body.email !== usuarioAtual.email) {
+      const emailEmUso = await usuarioModel.buscarPorEmail(req.body.email);
+      if (emailEmUso) {
+        throw criarErro(400, "Este email já está em uso por outro usuário");
+      }
+    }
+
+    const usuarioAtualizado = await usuarioModel.atualizar(id, req.body);
+    return res.json(usuarioAtualizado);
+  },
+
+  async remover(req, res) {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id)) {
+      throw criarErro(400, "ID de usuário inválido");
+    }
+
+    const usuario = await usuarioModel.buscar(id);
     if (!usuario) {
-      return res.status(404).json({ erro: "Usuario não encontrado" });
+      throw criarErro(404, "Usuário não encontrado");
     }
 
-    // O Model calcula se existem tarefas do usuário
-    const qtdTarefas = tarefaModel.contarPorUsuario(id);
+    // Verifica se existem tarefas atreladas ao usuário antes de remover
+    const qtdTarefas = await tarefaModel.contarPorUsuario(id);
 
     if (qtdTarefas > 0) {
-      return res.status(400).json({
-        erro: "Usuário possui tarefas. Remova as tarefas antes.",
-      });
+      throw criarErro(400, "Usuário possui tarefas. Remova as tarefas antes.");
     }
 
-    usuarioModel.remover(id);
+    await usuarioModel.remover(id);
 
-    res.json({ mensagem: "usuario removido com sucesso", id });
+    return res.json({ mensagem: "Usuário removido com sucesso", id });
   },
 };
 

@@ -1,50 +1,39 @@
-const jwt = require("jsonwebtoken");
-
-const usuarioModel = require("../models/usuario.model");
+const jwt = require('jsonwebtoken');
+const usuarioModel = require('../models/usuario.model');
+const criarErro = require('../utils/criarErro');
 
 const authController = {
-  login(req, res) {
+  async login(req, res) {
     const { email, senha } = req.body;
 
-
     // Validação básica
+    if (!email || !senha) {
+      throw criarErro(400, "Email e senha são obrigatórios");
+    }
 
-    if (!email || !senha)
-      return res.status(400).json({ erro: "Email e senha são obrigatórios" });
+    // 1. Verificar se o usuário existe na base de dados
+    const usuario = await usuarioModel.buscarPorEmail(email);
 
-    // 1. Verificar se o usuário existe
+    if (!usuario) {
+      throw criarErro(401, "Credenciais inválidas");
+    }
 
-    const usuario = usuarioModel.buscarPorEmail(email);
+    // 2. Verificar a senha (comparação com a coluna senha_hash da base de dados)
+    if (usuario.senha_hash !== senha) {
+      throw criarErro(401, "Credenciais inválidas");
+    }
 
-    if (!usuario)
-      return res.status(401).json({ erro: "Credenciais inválidas" });
-
-    // 2. Verificar a senha
-
-    // Por enquanto comparação direta — Dia 4 usa hash
-
-    if (usuario.senha !== senha)
-      return res
-        .status(401)
-
-        .json({ erro: "Credenciais inválidas" }); // 3. Gerar o token JWT
-
+    // 3. Gerar o token JWT
     const token = jwt.sign(
       { id: usuario.id, nome: usuario.nome },
-
-      process.env.JWT_SECRET,
-
-      { expiresIn: "8h" },
+      process.env.JWT_SECRET || 'chave_secreta_padrao',
+      { expiresIn: "8h" }
     );
 
     // 4. Retornar token e dados públicos
-
-    // Nunca retornar a senha na resposta
-
-    res.json({
+    return res.json({
       token,
-
-      usuario: { id: usuario.id, nome: usuario.nome },
+      usuario: { id: usuario.id, nome: usuario.nome }
     });
   },
 };

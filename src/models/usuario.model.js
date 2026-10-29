@@ -1,53 +1,112 @@
-let usuarios = [
-  { id: 1, 
-    nome: "admin", 
-    email: "admin@taskflow.com",
-     senha: "1234" },
-];
+const prisma = require('../database/prisma');
 
-let proximoId = 2;
+// Seleção de campos seguros para não expor a senha_hash
+const camposSeguros = {
+  id: true,
+  nome: true,
+  email: true,
+  criado_em: true,
+};
 
 module.exports = {
-  listar: ({ nome, email } = {}) => {
-    let resultado = usuarios;
+  listar: async (filtros = {}) => {
+    const where = {};
 
-    if (nome) {
-      resultado = resultado.filter((u) => u.nome === nome);
+    if (filtros.nome) {
+      where.nome = {
+        contains: filtros.nome,
+        mode: 'insensitive', // Equivale ao ILIKE
+      };
     }
-    if (email) {
-      resultado = resultado.filter((u) => u.email === email);
+
+    if (filtros.email) {
+      where.email = filtros.email;
     }
 
-    return resultado;
+    const lista = await prisma.usuarios.findMany({
+      where,
+      select: camposSeguros,
+      orderBy: { id: 'asc' },
+    });
+
+    return lista;
   },
 
-  buscar: (id) => usuarios.find((u) => u.id === id),
+  buscar: async (id) => {
+    const usuario = await prisma.usuarios.findUnique({
+      where: { id: Number(id) },
+      select: camposSeguros,
+    });
 
-  buscarPorEmail: (email) => usuarios.find((u) => u.email === email),
-
-  adicionar: ({ nome, email, senha }) => {
-    const novo = {
-      id: proximoId++,
-      nome: nome || "fefe",
-      email: email || "admin@taskflow.com",
-      senha: senha || "1234",
-    };
-    usuarios.push(novo);
-    return novo;
+    return usuario;
   },
 
-  atualizar: (id, dados) => {
-    const idx = usuarios.findIndex((u) => u.id === id);
-    if (idx === -1) return null;
+  buscarPorEmail: async (email) => {
+    // Traz a senha_hash para permitir a verificação de login/autenticação no controller
+    const usuario = await prisma.usuarios.findUnique({
+      where: { email },
+    });
 
-    usuarios[idx] = { id, ...dados };
-    return usuarios[idx];
+    return usuario;
   },
 
-  remover: (id) => {
-    const idx = usuarios.findIndex((u) => u.id === id);
-    if (idx === -1) return null;
+  adicionar: async (dados) => {
+    const hashParaSalvar = dados.senha_hash || dados.senha || '1234';
 
-    return usuarios.splice(idx, 1)[0];
+    const novoUsuario = await prisma.usuarios.create({
+      data: {
+        nome: dados.nome,
+        email: dados.email,
+        senha_hash: hashParaSalvar,
+        criado_em: new Date(),
+      },
+      select: camposSeguros,
+    });
+
+    return novoUsuario;
+  },
+
+  atualizar: async (id, dados) => {
+    const idNum = Number(id);
+
+    // 1. Verifica se o usuário existe
+    const usuarioAtual = await prisma.usuarios.findUnique({
+      where: { id: idNum },
+    });
+
+    if (!usuarioAtual) return null;
+
+    const hashParaSalvar = dados.senha_hash || dados.senha;
+
+    // 2. Atualiza os dados usando undefined para campos não informados (mantém o valor atual)
+    const usuarioAtualizado = await prisma.usuarios.update({
+      where: { id: idNum },
+      data: {
+        nome: dados.nome ?? undefined,
+        email: dados.email ?? undefined,
+        senha_hash: hashParaSalvar ?? undefined,
+      },
+      select: camposSeguros,
+    });
+
+    return usuarioAtualizado;
+  },
+
+  remover: async (id) => {
+    try {
+      const usuarioRemovido = await prisma.usuarios.delete({
+        where: { id: Number(id) },
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+        },
+      });
+
+      return usuarioRemovido;
+    } catch (error) {
+      if (error.code === 'P2025') return null;
+      throw error;
+    }
   },
 };
